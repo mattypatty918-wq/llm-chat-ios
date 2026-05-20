@@ -73,13 +73,16 @@ platform :ios do
   # ---------------------------------------------------------------------------
   lane :certificates do |options|
     api_key = load_asc_api_key
+    readonly = options.key?(:readonly) ? options[:readonly] : true
+    readonly = readonly.to_s.downcase == "true" unless [true, false].include?(readonly)
+
     match(
       type:                    options[:type] || "appstore",
       app_identifier:          APP_IDENTIFIER,
       team_id:                 TEAM_ID,
       git_url:                 ENV["MATCH_GIT_URL"],      # private repo URL
       git_basic_authorization: ENV["MATCH_GIT_AUTH"],     # base64(user:pat)
-      readonly:                options.fetch(:readonly, true),
+      readonly:                readonly,
       api_key:                 api_key
     )
   end
