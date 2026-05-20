@@ -20,7 +20,6 @@ jobs:
         with:
           ruby-version: '3.2'
           bundler-cache: true
-          working-directory: LLMChat
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.app
@@ -29,7 +28,6 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        working-directory: LLMChat
         run: xcodegen generate --spec project.yml
 
       - name: Write ASC API key
@@ -38,7 +36,6 @@ jobs:
           echo "${{ secrets.ASC_KEY_CONTENT }}" | base64 --decode > ~/.appstoreconnect/api_key.json
 
       - name: Run Match (create certs)
-        working-directory: LLMChat
         env:
           APPLE_TEAM_ID:    ${{ secrets.APPLE_TEAM_ID }}
           ASC_KEY_ID:       ${{ secrets.ASC_KEY_ID }}
