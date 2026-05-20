@@ -6,7 +6,7 @@ default_platform(:ios)
 
 APP_IDENTIFIER = "com.matsimpson.llmchat"   # ← change to your bundle ID
 SCHEME         = "LLMChat"
-XCODEPROJ      = "LLMChat.xcodeproj"
+XCODEPROJ      = "../LLMChat.xcodeproj"
 TEAM_ID        = ENV["APPLE_TEAM_ID"]       # set in GitHub Secrets
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ platform :ios do
     # Generate .xcodeproj from project.yml (xcodegen)
     # Installed via Homebrew in CI; safe to run every time - it's idempotent
     sh("which xcodegen || brew install xcodegen")
-    sh("xcodegen generate --spec project.yml")
+    sh("cd .. && xcodegen generate --spec project.yml")
   end
 
   # ---------------------------------------------------------------------------
