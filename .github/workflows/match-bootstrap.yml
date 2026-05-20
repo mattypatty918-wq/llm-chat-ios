@@ -1,0 +1,54 @@
+name: Match Bootstrap (run once)
+
+# Run this manually ONCE to create and store signing certs in ios-certs repo.
+# After that, the ios-deploy workflow handles everything automatically.
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    name: Seed Signing Certs
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: LLMChat
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: LLMChat
+        run: xcodegen generate --spec project.yml
+
+      - name: Write ASC API key
+        run: |
+          mkdir -p ~/.appstoreconnect
+          echo "${{ secrets.ASC_KEY_CONTENT }}" | base64 --decode > ~/.appstoreconnect/api_key.json
+
+      - name: Run Match (create certs)
+        working-directory: LLMChat
+        env:
+          APPLE_TEAM_ID:    ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID:       ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:    ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT:  ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_GIT_URL:    ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_AUTH:   ${{ secrets.MATCH_GIT_AUTH }}
+          MATCH_PASSWORD:   ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+        run: |
+          bundle exec fastlane match appstore \
+            --readonly false \
+            --verbose
