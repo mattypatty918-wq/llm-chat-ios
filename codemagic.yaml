@@ -1,0 +1,64 @@
+# Codemagic CI/CD for LLM Chat (Native SwiftUI App)
+# App: https://github.com/mattypatty918-wq/llm-chat-ios
+# Bundle ID: com.matsimpson.llmchat
+
+workflows:
+  ios-build:
+    name: iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Codemagic
+    environment:
+      vars:
+        BUNDLE_ID: "com.matsimpson.llmchat"
+        XCODE_WORKSPACE: "LLMChat/LLMChat.xcworkspace"
+        XCODE_SCHEME: "LLMChat"
+        APP_STORE_APP_ID: ""
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events:
+        - push
+        - tag
+      branch-patterns:
+        - pattern: master
+          include: true
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd LLMChat && bundle install
+          cd .. && pod install
+      - name: Set up keychain
+        script: |
+          keychain initialize
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+      - name: Add certificates to keychain
+        script: |
+          keychain add-certificates
+      - name: Set up code signing settings
+        script: |
+          xcode-project use-profiles
+      - name: Increment build number
+        script: |
+          if [ -n "$APP_STORE_APP_ID" ]; then
+            BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APP_ID" || echo "0")
+            agvtool new-version -all $((BUILD_NUMBER + 1))
+          fi
+      - name: Build iOS
+        script: |
+          xcode-project build-ipa --workspace "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      app_store_connect:
+        auth: integration
+      email:
+        recipients:
+          - mattypatty918@gmail.com
+        notify:
+          success: true
+          failure: true
