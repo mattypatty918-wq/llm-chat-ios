@@ -1,0 +1,11 @@
+app_identifier "com.matsimpson.llmchat"  # ← your bundle ID
+
+# Apple ID is only needed for password-based auth.
+# We use App Store Connect API keys instead, so this is just for reference.
+# apple_id "your@email.com"
+
+# Your 10-character Apple Developer Team ID
+# Found at: https://developer.apple.com/account → Membership → Team ID
+team_id ENV["APPLE_TEAM_ID"]
+
+itc_team_id ENV["APPLE_TEAM_ID"]  # same unless you're in multiple App Store teams

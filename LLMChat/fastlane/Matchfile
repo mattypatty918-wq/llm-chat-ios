@@ -1,0 +1,12 @@
+# Match stores your signing certificates and provisioning profiles in a
+# private git repository (encrypted with MATCH_PASSWORD).
+# Everyone on the team runs `fastlane match` and gets the right certs.
+
+git_url ENV["MATCH_GIT_URL"]            # e.g. "https://github.com/mathew-simpson/ios-certs"
+git_basic_authorization ENV["MATCH_GIT_AUTH"]  # base64("username:personal_access_token")
+
+storage_mode "git"
+type "appstore"                         # default type
+
+app_identifier ["com.matsimpson.llmchat"]
+team_id ENV["APPLE_TEAM_ID"]

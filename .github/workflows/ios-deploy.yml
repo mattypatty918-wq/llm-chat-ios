@@ -1,0 +1,117 @@
+name: iOS Deploy
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggers:
+#   push to main            → TestFlight beta
+#   push tag v*             → App Store submission
+#   workflow_dispatch       → manual run, choose target
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'Fastlane lane to run'
+        required: true
+        default: 'beta'
+        type: choice
+        options: [beta, release]
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: macos-14          # Apple Silicon runner (M1) - fastest + cheapest
+    timeout-minutes: 60
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # needed for changelog_from_git_commits
+
+      # ── Ruby + Bundler ───────────────────────────────────────────────────────
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: LLMChat
+
+      # ── Xcode version ────────────────────────────────────────────────────────
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      # ── Write App Store Connect API key ──────────────────────────────────────
+      - name: Write ASC API key
+        run: |
+          mkdir -p ~/.appstoreconnect
+          echo "${{ secrets.ASC_KEY_CONTENT }}" | base64 --decode > ~/.appstoreconnect/api_key.json
+          # api_key.json format expected by Fastlane:
+          # { "key_id": "...", "issuer_id": "...", "key": "-----BEGIN EC PRIVATE KEY-----\n..." }
+
+      # ── Cache CocoaPods / SPM ────────────────────────────────────────────────
+      - name: Cache derived data
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-derived-${{ hashFiles('LLMChat/**/*.swift') }}
+          restore-keys: ${{ runner.os }}-derived-
+
+      # ── Determine lane ───────────────────────────────────────────────────────
+      - name: Set lane
+        id: lane
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "lane=${{ inputs.lane }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "lane=release" >> $GITHUB_OUTPUT
+          else
+            echo "lane=beta" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Run Fastlane ─────────────────────────────────────────────────────────
+      - name: Run Fastlane ${{ steps.lane.outputs.lane }}
+        working-directory: LLMChat
+        env:
+          # App Store Connect API
+          ASC_KEY_ID:          ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:       ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT:     ${{ secrets.ASC_KEY_CONTENT }}
+
+          # Apple Developer Team
+          APPLE_TEAM_ID:       ${{ secrets.APPLE_TEAM_ID }}
+
+          # Fastlane Match - certificate repo
+          MATCH_GIT_URL:       ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_AUTH:      ${{ secrets.MATCH_GIT_AUTH }}
+          MATCH_PASSWORD:      ${{ secrets.MATCH_PASSWORD }}
+
+          # Git info for version tags
+          GITHUB_REF_TYPE:     ${{ github.ref_type }}
+          GITHUB_REF_NAME:     ${{ github.ref_name }}
+
+          # Suppress Fastlane update checks
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+          FASTLANE_HIDE_CHANGELOG:    "1"
+        run: bundle exec fastlane ${{ steps.lane.outputs.lane }}
+
+      # ── Upload build artifact (keep IPA for 30 days) ─────────────────────────
+      - name: Upload IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LLMChat-${{ github.sha }}.ipa
+          path: LLMChat/build/LLMChat.ipa
+          retention-days: 30
+
+      # ── Summary ──────────────────────────────────────────────────────────────
+      - name: Write summary
+        if: always()
+        run: |
+          echo "## iOS Deploy" >> $GITHUB_STEP_SUMMARY
+          echo "**Lane:** ${{ steps.lane.outputs.lane }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Ref:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
