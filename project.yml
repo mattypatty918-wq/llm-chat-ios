@@ -45,7 +45,7 @@ targets:
     info:
       path: LLMChat/Info.plist
       properties:
-        CFBundleDisplayName: LLM Chat
+        CFBundleDisplayName: Whitefoxes
         CFBundleName: LLMChat
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"

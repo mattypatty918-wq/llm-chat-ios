@@ -22,7 +22,7 @@ on:
 jobs:
   deploy:
     name: Build & Deploy
-    runs-on: macos-14          # Apple Silicon runner (M1) - fastest + cheapest
+    runs-on: macos-15          # Apple Silicon runner (M1) - fastest + cheapest
     timeout-minutes: 60
 
     steps:
