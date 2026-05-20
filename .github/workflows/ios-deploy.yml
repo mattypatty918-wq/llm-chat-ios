@@ -113,4 +113,3 @@ jobs:
           echo "**Lane:** ${{ steps.lane.outputs.lane }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Ref:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-test
