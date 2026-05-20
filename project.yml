@@ -29,7 +29,7 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "iPhone Distribution"
         PROVISIONING_PROFILE_SPECIFIER: "match AppStore com.matsimpson.llmchat"
-        INFOPLIST_FILE: LLMChat/Info.plist
+        INFOPLIST_FILE: Info.plist
         TARGETED_DEVICE_FAMILY: "1"   # iPhone only
       configs:
         Debug:
@@ -38,12 +38,13 @@ targets:
           CODE_SIGN_STYLE: Manual
 
     sources:
-      - path: LLMChat
-        excludes:
-          - "**/*.md"
+      - path: LLMChatApp.swift
+      - path: Models
+      - path: Services
+      - path: Views
 
     info:
-      path: LLMChat/Info.plist
+      path: Info.plist
       properties:
         CFBundleDisplayName: Whitefoxes
         CFBundleName: LLMChat
