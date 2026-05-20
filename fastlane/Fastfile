@@ -1,5 +1,6 @@
 default_platform(:ios)
 
+require "base64"
 require "json"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -15,31 +16,52 @@ TEAM_ID        = ENV["APPLE_TEAM_ID"]       # set in GitHub Secrets
 # Shared helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def parse_asc_payload(payload, key_id, issuer_id)
+  return nil if payload.nil? || payload.to_s.strip.empty?
+
+  payload = payload.to_s.strip
+
+  if payload.include?("BEGIN PRIVATE KEY")
+    return [key_id, issuer_id, payload]
+  end
+
+  if payload.start_with?("{")
+    api_key_json = JSON.parse(payload)
+    return [
+      api_key_json["key_id"] || key_id,
+      api_key_json["issuer_id"] || issuer_id,
+      api_key_json["key"] || api_key_json["key_content"] || api_key_json["private_key"]
+    ]
+  end
+
+  if payload.match?(/\A[A-Za-z0-9+\/=\r\n]+\z/)
+    decoded = Base64.strict_decode64(payload.gsub(/\s+/, ""))
+    return parse_asc_payload(decoded, key_id, issuer_id) if decoded != payload
+  end
+
+  nil
+rescue StandardError
+  nil
+end
+
 def load_asc_api_key
-  # CI writes ASC_KEY_CONTENT to disk after base64-decoding it. Depending on how
-  # the secret was created, that decoded payload may be either the raw .p8 key or
-  # a JSON object containing key_id, issuer_id, and key. Support both formats.
+  # Support all common ASC_KEY_CONTENT formats used in CI: raw .p8 PEM,
+  # base64-encoded .p8 PEM, raw JSON, or base64-encoded JSON.
   key_path = File.expand_path("~/.appstoreconnect/api_key.json")
   key_id = ENV["ASC_KEY_ID"]
   issuer_id = ENV["ASC_ISSUER_ID"]
-  key_content = ENV["ASC_KEY_CONTENT"]
 
-  if File.exist?(key_path)
-    decoded_payload = File.read(key_path).strip
-    if decoded_payload.start_with?("{")
-      api_key_json = JSON.parse(decoded_payload)
-      key_id = api_key_json["key_id"] || key_id
-      issuer_id = api_key_json["issuer_id"] || issuer_id
-      key_content = api_key_json["key"]
-    else
-      key_content = decoded_payload
-    end
-  end
+  candidates = []
+  candidates << ENV["ASC_KEY_CONTENT"]
+  candidates << File.read(key_path) if File.exist?(key_path)
+
+  parsed = candidates.filter_map { |candidate| parse_asc_payload(candidate, key_id, issuer_id) }.find { |_, _, key| key && key.include?("BEGIN PRIVATE KEY") }
+  UI.user_error!("ASC_KEY_CONTENT must contain a valid App Store Connect .p8 key, either raw or base64-encoded") unless parsed
 
   app_store_connect_api_key(
-    key_id:      key_id,
-    issuer_id:   issuer_id,
-    key_content: key_content,
+    key_id:      parsed[0],
+    issuer_id:   parsed[1],
+    key_content: parsed[2],
     in_house:    false
   )
 end
