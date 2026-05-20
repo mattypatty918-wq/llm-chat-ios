@@ -36,7 +36,15 @@ def parse_asc_payload(payload, key_id, issuer_id)
 
   if payload.match?(/\A[A-Za-z0-9+\/=\r\n]+\z/)
     decoded = Base64.strict_decode64(payload.gsub(/\s+/, ""))
-    return parse_asc_payload(decoded, key_id, issuer_id) if decoded != payload
+    parsed_decoded = parse_asc_payload(decoded, key_id, issuer_id) if decoded != payload
+    return parsed_decoded if parsed_decoded
+
+    # Some CI secrets are stored as the base64 body/DER bytes of the .p8 file
+    # without the PEM envelope. Re-wrap those bytes as PKCS8 PEM for Fastlane.
+    if decoded.bytesize > 100
+      pem_body = Base64.strict_encode64(decoded).scan(/.{1,64}/).join("\n")
+      return [key_id, issuer_id, "-----BEGIN PRIVATE KEY-----\n#{pem_body}\n-----END PRIVATE KEY-----"]
+    end
   end
 
   nil
