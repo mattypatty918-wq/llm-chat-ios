@@ -1,0 +1,195 @@
+default_platform(:ios)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Constants - update these to match your project
+# ─────────────────────────────────────────────────────────────────────────────
+
+APP_IDENTIFIER = "com.matsimpson.llmchat"   # ← change to your bundle ID
+SCHEME         = "LLMChat"
+XCODEPROJ      = "LLMChat.xcodeproj"
+TEAM_ID        = ENV["APPLE_TEAM_ID"]       # set in GitHub Secrets
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_asc_api_key
+  # Prefer JSON file on disk (CI writes it from secrets), else environment
+  key_path = File.expand_path("~/.appstoreconnect/api_key.json")
+  if File.exist?(key_path)
+    app_store_connect_api_key(
+      key_id:        ENV["ASC_KEY_ID"],
+      issuer_id:     ENV["ASC_ISSUER_ID"],
+      key_content:   File.read(key_path),
+      in_house:      false
+    )
+  else
+    app_store_connect_api_key(
+      key_id:        ENV["ASC_KEY_ID"],
+      issuer_id:     ENV["ASC_ISSUER_ID"],
+      key_content:   ENV["ASC_KEY_CONTENT"],   # base64-decoded .p8 content
+      in_house:      false
+    )
+  end
+end
+
+def bump_build
+  # Increment build number using the current timestamp so it's always unique
+  build_number = Time.now.strftime("%Y%m%d%H%M")
+  increment_build_number(build_number: build_number)
+  UI.success "Build number set to #{build_number}"
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+platform :ios do
+
+  # ---------------------------------------------------------------------------
+  # before_all: runs before every lane
+  # ---------------------------------------------------------------------------
+  before_all do
+    # Ensure Xcode command line tools are available
+    xcode_select("/Applications/Xcode.app") if File.exist?("/Applications/Xcode.app")
+
+    # Generate .xcodeproj from project.yml (xcodegen)
+    # Installed via Homebrew in CI; safe to run every time - it's idempotent
+    sh("which xcodegen || brew install xcodegen")
+    sh("xcodegen generate --spec project.yml")
+  end
+
+  # ---------------------------------------------------------------------------
+  # certificates: sync signing certs/profiles via Match
+  # Call this directly if you need to regenerate certs: fastlane certificates
+  # ---------------------------------------------------------------------------
+  lane :certificates do |options|
+    api_key = load_asc_api_key
+    match(
+      type:                    options[:type] || "appstore",
+      app_identifier:          APP_IDENTIFIER,
+      team_id:                 TEAM_ID,
+      git_url:                 ENV["MATCH_GIT_URL"],      # private repo URL
+      git_basic_authorization: ENV["MATCH_GIT_AUTH"],     # base64(user:pat)
+      readonly:                options.fetch(:readonly, true),
+      api_key:                 api_key
+    )
+  end
+
+  # ---------------------------------------------------------------------------
+  # beta: build + upload to TestFlight
+  # Triggered automatically on every push to main
+  # ---------------------------------------------------------------------------
+  lane :beta do
+    api_key = load_asc_api_key
+
+    bump_build
+
+    certificates(type: "appstore", readonly: true)
+
+    gym(
+      scheme:                  SCHEME,
+      project:                 XCODEPROJ,
+      configuration:           "Release",
+      export_method:           "app-store",
+      export_options: {
+        provisioningProfiles: {
+          APP_IDENTIFIER => "match AppStore #{APP_IDENTIFIER}"
+        }
+      },
+      output_directory:        "./build",
+      output_name:             "LLMChat.ipa",
+      clean:                   true,
+      silent:                  false
+    )
+
+    pilot(
+      api_key:                  api_key,
+      ipa:                      "./build/LLMChat.ipa",
+      skip_waiting_for_build_processing: true,
+      changelog:                changelog_from_git_commits(
+                                  merge_commit_filtering: "exclude_merges"
+                                )
+    )
+
+    UI.success "✅ Uploaded to TestFlight!"
+  end
+
+  # ---------------------------------------------------------------------------
+  # release: submit for App Store review
+  # Triggered manually or on a version tag push (v*)
+  # ---------------------------------------------------------------------------
+  lane :release do
+    api_key = load_asc_api_key
+
+    # Bump marketing version from git tag if running in CI
+    if ENV["GITHUB_REF_TYPE"] == "tag"
+      version = ENV["GITHUB_REF_NAME"].delete_prefix("v")
+      increment_version_number(version_number: version)
+    end
+
+    bump_build
+
+    certificates(type: "appstore", readonly: true)
+
+    gym(
+      scheme:                  SCHEME,
+      project:                 XCODEPROJ,
+      configuration:           "Release",
+      export_method:           "app-store",
+      export_options: {
+        provisioningProfiles: {
+          APP_IDENTIFIER => "match AppStore #{APP_IDENTIFIER}"
+        }
+      },
+      output_directory:        "./build",
+      output_name:             "LLMChat.ipa",
+      clean:                   true
+    )
+
+    deliver(
+      api_key:                  api_key,
+      ipa:                      "./build/LLMChat.ipa",
+      skip_screenshots:         true,
+      skip_metadata:            false,
+      submit_for_review:        true,
+      force:                    true,
+      automatic_release:        false,    # manual release after Apple approves
+      submission_information: {
+        add_id_info_uses_idfa: false
+      }
+    )
+
+    UI.success "🚀 Submitted for App Store review!"
+  end
+
+  # ---------------------------------------------------------------------------
+  # register_device: add a test device UDID to the portal
+  # Usage: fastlane register_device name:"Mat's iPhone" udid:"abc123..."
+  # ---------------------------------------------------------------------------
+  lane :register_device do |options|
+    api_key = load_asc_api_key
+    register_devices(
+      devices: { options[:name] => options[:udid] },
+      api_key: api_key,
+      team_id: TEAM_ID
+    )
+    # Re-generate provisioning profiles to include the new device
+    match(
+      type:                    "adhoc",
+      force_for_new_devices:   true,
+      app_identifier:          APP_IDENTIFIER,
+      team_id:                 TEAM_ID,
+      git_url:                 ENV["MATCH_GIT_URL"],
+      git_basic_authorization: ENV["MATCH_GIT_AUTH"],
+      api_key:                 api_key
+    )
+  end
+
+  # ---------------------------------------------------------------------------
+  # Error handling
+  # ---------------------------------------------------------------------------
+  error do |lane, exception|
+    UI.error "❌ Lane #{lane} failed: #{exception.message}"
+    # Add Slack/Discord notification here if you want alerts:
+    # slack(message: "Build failed: #{exception.message}", success: false, ...)
+  end
+
+end
