@@ -1,39 +1,23 @@
-# Codemagic CI/CD for LLM Chat (Native SwiftUI)
-# App: https://github.com/mattypatty918-wq/llm-chat-ios
-# Bundle ID: com.mattypattysapps.llmchat
-
+name: LLM Chat
+description: Native SwiftUI chat app for AI models
+type: ios
 environment:
-  appId: com.mattypattysapps.llmchat
-  types:
-    - ios
-  node: v18
-
+  ios: "17.0"
 workflows:
   ios-workflow:
     name: iOS
-    instance_type: mac_mini_m2
     max_build_duration: 60
+    instance_type: mac_mini_m2
     integrations:
       app_store_connect: Codemagic
     environment:
       vars:
-        BUNDLE_ID: "com.mattypattysapps.llmchat"
-        XCODE_WORKSPACE: "LLMChat.xcworkspace"
-        XCODE_SCHEME: "LLMChat"
-        APP_STORE_APP_ID: ""
-    triggering:
-      events:
-        - push
-        - tag
-      branch-patterns:
-        - pattern: master
-          include: true
+        BUNDLE_ID: com.mattypattysapps.llmchat
+        XCODE_SCHEME: LLMChat
     scripts:
-      - cd /Users/builder/clone && ls -la
-      - bundle install
-      - bundle exec fastlane build
+      - xcode-project build-ipa --project LLMChat.xcodeproj --scheme LLMChat
     artifacts:
-      - build/*.ipa
+      - build/ios/ipa/*.ipa
     publishing:
       app_store_connect:
         auth: integration
